@@ -1,0 +1,111 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HELPER FUNCTIONS
+    // =========================================================================
+
+    /// Cek apakah pengguna sudah terautentikasi (login).
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /// Ambil data dokumen user yang sedang login dari collection `users`.
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    /// Cek apakah user yang login memiliki role 'owner'.
+    function isOwner() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role == 'owner';
+    }
+
+    /// Cek apakah user yang login memiliki role 'kasir'.
+    function isKasir() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role == 'kasir';
+    }
+
+    /// Cek apakah user adalah staf yang sah (owner atau kasir).
+    function isStaff() {
+      return isOwner() || isKasir();
+    }
+
+    /// Cek kecocokan laundryId antara user dan dokumen (multi-cabang / multi-tenant).
+    function matchesLaundry(docLaundryId) {
+      return docLaundryId == null || 
+        docLaundryId == '' || 
+        (isSignedIn() && getUserData().laundryId == docLaundryId);
+    }
+
+    // =========================================================================
+    // 1. COLLECTION USERS
+    // =========================================================================
+    // - User hanya bisa membaca dan mengubah datanya sendiri.
+    // - Owner juga dapat melihat daftar staf dalam cabang laundry miliknya.
+    // - Pembuatan dokumen profil diizinkan saat user pertama kali login/register.
+    match /users/{userId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId || 
+        (isOwner() && matchesLaundry(resource.data.laundryId))
+      );
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId || 
+        isOwner()
+      );
+      allow delete: if isOwner() && request.auth.uid != userId;
+    }
+
+    // =========================================================================
+    // 2. COLLECTION SERVICES (Katalog Layanan & Tarif)
+    // =========================================================================
+    // - Read: Semua user terautentikasi (owner & kasir) dapat melihat katalog.
+    // - Write (Create, Update, Delete): HANYA role "owner" yang diizinkan.
+    match /services/{serviceId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner();
+      allow update: if isOwner();
+      allow delete: if isOwner();
+    }
+
+    // =========================================================================
+    // 3. COLLECTION CUSTOMERS (Data Pelanggan)
+    // =========================================================================
+    // - Read & Create: Staf (owner & kasir) bisa melihat dan menambah pelanggan.
+    // - Update: Staf bisa memperbarui profil / total transaksi pelanggan.
+    // - Delete: HANYA role "owner" yang bisa menghapus data pelanggan.
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isOwner();
+    }
+
+    // =========================================================================
+    // 4. COLLECTION TRANSACTIONS (Nota & Transaksi Laundry)
+    // =========================================================================
+    // - Read: Staf dapat melihat transaksi.
+    // - Create: Staf (owner & kasir) dapat menginput nota transaksi baru.
+    // - Update: Staf dapat memajukan tahapan status (Diterima -> Cuci -> Setrika -> Siap -> Selesai).
+    // - Delete: HANYA role "owner" yang dapat menghapus nota transaksi (Kasir TIDAK BISA delete).
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isOwner();
+    }
+
+    // =========================================================================
+    // DEFAULT RULE (Tolak akses ke collection yang tidak didefinisikan)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

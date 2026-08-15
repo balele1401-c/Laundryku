@@ -1,0 +1,28 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "laundryku-42075",
+          "appId": "1:904081762251:android:d3f34607dda557698d384e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "laundryku-42075",
+          "configurations": {
+            "android": "1:904081762251:android:d3f34607dda557698d384e",
+            "ios": "1:904081762251:ios:3160d89f0b905d258d384e",
+            "macos": "1:904081762251:ios:3160d89f0b905d258d384e",
+            "web": "1:904081762251:web:3b280a9d5c513a208d384e",
+            "windows": "1:904081762251:web:0b1444da7abc14018d384e"
+          }
+        }
+      }
+    }
+  }
+}

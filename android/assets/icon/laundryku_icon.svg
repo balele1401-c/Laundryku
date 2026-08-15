@@ -1,0 +1,48 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
+    </linearGradient>
+    <linearGradient id="drumGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <clipPath id="drumClip">
+      <circle cx="256" cy="266" r="128"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGradient)"/>
+
+  <!-- Machine body outer ring -->
+  <circle cx="256" cy="266" r="152" fill="none" stroke="#FFFFFF" stroke-opacity="0.15" stroke-width="14"/>
+
+  <!-- Control dots (top of machine, like buttons) -->
+  <circle cx="196" cy="120" r="10" fill="#F97316"/>
+  <circle cx="256" cy="112" r="10" fill="#FFFFFF" fill-opacity="0.55"/>
+  <circle cx="316" cy="120" r="10" fill="#FFFFFF" fill-opacity="0.55"/>
+
+  <!-- Drum / porthole -->
+  <circle cx="256" cy="266" r="132" fill="#0F2A63"/>
+  <circle cx="256" cy="266" r="128" fill="url(#drumGradient)"/>
+
+  <!-- Water / swirl waves inside drum -->
+  <g clip-path="url(#drumClip)">
+    <path d="M100 300 Q 160 270 220 300 T 340 300 T 460 300 V 420 H 100 Z" fill="#FFFFFF" fill-opacity="0.22"/>
+    <path d="M90 330 Q 150 300 210 330 T 330 330 T 450 330 V 420 H 90 Z" fill="#FFFFFF" fill-opacity="0.30"/>
+    <!-- bubbles -->
+    <circle cx="210" cy="240" r="12" fill="#FFFFFF" fill-opacity="0.55"/>
+    <circle cx="250" cy="210" r="7" fill="#FFFFFF" fill-opacity="0.5"/>
+    <circle cx="300" cy="235" r="16" fill="#FFFFFF" fill-opacity="0.45"/>
+    <circle cx="200" cy="200" r="5" fill="#FFFFFF" fill-opacity="0.6"/>
+  </g>
+
+  <!-- Drum rim highlight -->
+  <circle cx="256" cy="266" r="128" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="4"/>
+
+  <!-- Small orange accent bubble outside drum, top-right -->
+  <circle cx="378" cy="168" r="18" fill="#F97316"/>
+  <circle cx="404" cy="196" r="9" fill="#F97316" fill-opacity="0.7"/>
+</svg>
