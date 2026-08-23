@@ -41,13 +41,25 @@ class CustomerDetailScreen extends StatelessWidget {
     final url =
         Uri.parse('https://wa.me/$cleaned?text=${Uri.encodeComponent(message)}');
 
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+        if (!launched && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tidak dapat membuka WhatsApp. Pastikan WhatsApp terpasang.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gagal membuka aplikasi WhatsApp'),
+          SnackBar(
+            content: Text('Gagal membuka aplikasi WhatsApp: $e'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -511,20 +523,17 @@ class CustomerDetailScreen extends StatelessWidget {
       case TransactionStatus.diterima:
         statusColor = AppTheme.statusWarning;
         break;
-      case TransactionStatus.prosesCuci:
-        statusColor =
-            isDark ? AppTheme.darkPrimary : AppTheme.lightPrimaryVariant;
-        break;
-      case TransactionStatus.prosesSetrika:
-        statusColor = AppTheme.signatureColor(context);
-        break;
-      case TransactionStatus.siapDiambil:
+      case TransactionStatus.selesai:
         statusColor = AppTheme.statusSuccess;
         break;
-      case TransactionStatus.selesai:
+      case TransactionStatus.sudahDiambil:
         statusColor = const Color(0xFF64748B);
         break;
     }
+
+    final isAttention = tx.isAttentionRequired;
+    final effectiveAccentColor =
+        isAttention ? const Color(0xFFE11D48) : statusColor;
 
     return SignatureAccentCard(
       onTap: () {
@@ -534,11 +543,41 @@ class CustomerDetailScreen extends StatelessWidget {
           ),
         );
       },
-      accentColor: statusColor,
+      accentColor: effectiveAccentColor,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (isAttention) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE11D48).withAlpha(isDark ? 40 : 20),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+                border: Border.all(
+                  color: const Color(0xFFE11D48).withAlpha(isDark ? 80 : 50),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.priority_high_rounded,
+                      size: 12, color: Color(0xFFE11D48)),
+                  const SizedBox(width: 4),
+                  Text(
+                    'PERHATIAN: TUNGGAKAN BELUM DIBAYAR',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFFE11D48),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -583,7 +622,7 @@ class CustomerDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Divider(height: 1),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -606,10 +645,87 @@ class CustomerDetailScreen extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+
+          // Badges: Status Pengambilan, Status Pembayaran, Metode Pembayaran
+          Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            children: [
+              // Badge Pengambilan
+              _buildHistoryBadge(
+                label: tx.isSudahDiambil ? 'Sudah Diambil' : 'Belum Diambil',
+                icon: tx.isSudahDiambil
+                    ? Icons.check_circle_rounded
+                    : Icons.schedule_rounded,
+                color: tx.isSudahDiambil
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFD97706),
+                isDark: isDark,
+              ),
+              // Badge Pembayaran
+              _buildHistoryBadge(
+                label: tx.isLunas ? 'Lunas' : 'Belum Bayar',
+                icon: tx.isLunas
+                    ? Icons.verified_rounded
+                    : Icons.priority_high_rounded,
+                color: tx.isLunas
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFE11D48),
+                isDark: isDark,
+              ),
+              // Badge Metode
+              _buildHistoryBadge(
+                label: tx.metodePembayaran,
+                icon: tx.metodePembayaran.toUpperCase() == 'QRIS'
+                    ? Icons.qr_code_2_rounded
+                    : Icons.payments_outlined,
+                color: tx.metodePembayaran.toUpperCase() == 'QRIS'
+                    ? (isDark ? const Color(0xFF818CF8) : const Color(0xFF4F46E5))
+                    : (isDark ? const Color(0xFF34D399) : const Color(0xFF059669)),
+                isDark: isDark,
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
+
+  Widget _buildHistoryBadge({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withAlpha(isDark ? 35 : 20),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+        border: Border.all(
+          color: color.withAlpha(isDark ? 70 : 40),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10.5, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildEmptyTransactions(BuildContext context, bool isDark) {
     return Container(

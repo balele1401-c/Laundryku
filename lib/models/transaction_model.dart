@@ -13,11 +13,15 @@ class TransactionModel {
   final int? qty; // untuk satuan
   final double hargaSatuan;
   final double totalHarga;
+  final String metodePembayaran; // 'Tunai' | 'QRIS'
+  final PaymentStatus statusPembayaran; // PaymentStatus.lunas | PaymentStatus.belumBayar
   final TransactionStatus status;
   final DateTime tanggalMasuk;
   final DateTime estimasiSelesai;
   final String createdBy;
   final DateTime? waNotifSentAt; // timestamp saat notif WA berhasil dikirim
+  final DateTime? lastEditedAt; // timestamp saat transaksi diedit
+  final String? editedBy; // nama kasir/owner yang mengedit
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -32,14 +36,33 @@ class TransactionModel {
     this.qty,
     required this.hargaSatuan,
     required this.totalHarga,
+    this.metodePembayaran = 'Tunai',
+    this.statusPembayaran = PaymentStatus.lunas,
     required this.status,
     required this.tanggalMasuk,
     required this.estimasiSelesai,
     required this.createdBy,
     this.waNotifSentAt,
+    this.lastEditedAt,
+    this.editedBy,
     required this.createdAt,
     required this.updatedAt,
   });
+
+  /// Helper Getters Status Pengambilan & Pembayaran
+  bool get isSudahDiambil => status == TransactionStatus.sudahDiambil;
+  bool get isBelumDiambil => status != TransactionStatus.sudahDiambil;
+  bool get isLunas => statusPembayaran == PaymentStatus.lunas;
+  bool get isBelumBayar => statusPembayaran == PaymentStatus.belumBayar;
+  bool get isOverdue =>
+      status == TransactionStatus.diterima &&
+      DateTime.now().isAfter(estimasiSelesai);
+
+  /// Menandakan cucian sudah selesai/siap diambil atau diserahkan tetapi belum lunas
+  bool get isAttentionRequired =>
+      (status == TransactionStatus.selesai ||
+          status == TransactionStatus.sudahDiambil) &&
+      isBelumBayar;
 
   /// Buat instance dari Firestore DocumentSnapshot.
   factory TransactionModel.fromFirestore(
@@ -62,6 +85,10 @@ class TransactionModel {
       qty: (map['qty'] as num?)?.toInt(),
       hargaSatuan: (map['hargaSatuan'] as num?)?.toDouble() ?? 0,
       totalHarga: (map['totalHarga'] as num?)?.toDouble() ?? 0,
+      metodePembayaran: map['metodePembayaran'] as String? ?? 'Tunai',
+      statusPembayaran: PaymentStatus.fromString(
+        map['statusPembayaran'] as String? ?? 'lunas',
+      ),
       status: TransactionStatus.fromString(
         map['status'] as String? ?? 'diterima',
       ),
@@ -71,6 +98,10 @@ class TransactionModel {
       waNotifSentAt: map['waNotifSentAt'] != null
           ? _parseTimestamp(map['waNotifSentAt'])
           : null,
+      lastEditedAt: map['lastEditedAt'] != null
+          ? _parseTimestamp(map['lastEditedAt'])
+          : null,
+      editedBy: map['editedBy'] as String?,
       createdAt: _parseTimestamp(map['createdAt']),
       updatedAt: _parseTimestamp(map['updatedAt']),
     );
@@ -88,6 +119,8 @@ class TransactionModel {
       'qty': qty,
       'hargaSatuan': hargaSatuan,
       'totalHarga': totalHarga,
+      'metodePembayaran': metodePembayaran,
+      'statusPembayaran': statusPembayaran.firestoreValue,
       'status': status.firestoreValue,
       'tanggalMasuk': Timestamp.fromDate(tanggalMasuk),
       'estimasiSelesai': Timestamp.fromDate(estimasiSelesai),
@@ -95,6 +128,10 @@ class TransactionModel {
       'waNotifSentAt': waNotifSentAt != null
           ? Timestamp.fromDate(waNotifSentAt!)
           : null,
+      'lastEditedAt': lastEditedAt != null
+          ? Timestamp.fromDate(lastEditedAt!)
+          : null,
+      'editedBy': editedBy,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
@@ -111,11 +148,15 @@ class TransactionModel {
     int? qty,
     double? hargaSatuan,
     double? totalHarga,
+    String? metodePembayaran,
+    PaymentStatus? statusPembayaran,
     TransactionStatus? status,
     DateTime? tanggalMasuk,
     DateTime? estimasiSelesai,
     String? createdBy,
     DateTime? waNotifSentAt,
+    DateTime? lastEditedAt,
+    String? editedBy,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -130,11 +171,15 @@ class TransactionModel {
       qty: qty ?? this.qty,
       hargaSatuan: hargaSatuan ?? this.hargaSatuan,
       totalHarga: totalHarga ?? this.totalHarga,
+      metodePembayaran: metodePembayaran ?? this.metodePembayaran,
+      statusPembayaran: statusPembayaran ?? this.statusPembayaran,
       status: status ?? this.status,
       tanggalMasuk: tanggalMasuk ?? this.tanggalMasuk,
       estimasiSelesai: estimasiSelesai ?? this.estimasiSelesai,
       createdBy: createdBy ?? this.createdBy,
       waNotifSentAt: waNotifSentAt ?? this.waNotifSentAt,
+      lastEditedAt: lastEditedAt ?? this.lastEditedAt,
+      editedBy: editedBy ?? this.editedBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -149,5 +194,5 @@ class TransactionModel {
 
   @override
   String toString() =>
-      'TransactionModel(id: $id, nota: $nomorNota, status: ${status.label})';
+      'TransactionModel(id: $id, nota: $nomorNota, status: ${status.label}, bayar: ${statusPembayaran.label})';
 }

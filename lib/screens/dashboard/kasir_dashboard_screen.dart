@@ -302,7 +302,7 @@ class KasirDashboardScreen extends StatelessWidget {
                     _buildStatusRow(
                       context: context,
                       icon: Icons.inbox_outlined,
-                      label: 'Diterima (Antrean)',
+                      label: 'Diterima (Antrean Masuk)',
                       count: '${txProvider.antreanCount} Nota',
                       color: AppTheme.statusWarning,
                       onTap: () {
@@ -318,55 +318,34 @@ class KasirDashboardScreen extends StatelessWidget {
                     const SizedBox(height: 8),
                     _buildStatusRow(
                       context: context,
-                      icon: Icons.water_drop_outlined,
-                      label: 'Proses Cuci',
-                      count: '${txProvider.prosesCuciCount} Nota',
-                      color: isDark
-                          ? AppTheme.darkPrimary
-                          : AppTheme.lightPrimaryVariant,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const TransactionListScreen(
-                              initialStatusFilter:
-                                  TransactionStatus.prosesCuci,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    _buildStatusRow(
-                      context: context,
-                      icon: Icons.iron_outlined,
-                      label: 'Proses Setrika',
-                      count: '${txProvider.prosesSetrikaCount} Nota',
-                      color: AppTheme.signatureColor(context),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const TransactionListScreen(
-                              initialStatusFilter:
-                                  TransactionStatus.prosesSetrika,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    _buildStatusRow(
-                      context: context,
                       icon: Icons.check_circle_outline_rounded,
-                      label: 'Siap Diambil',
-                      count: '${txProvider.siapDiambilCount} Nota',
+                      label: 'Selesai (Siap Diambil)',
+                      count: '${txProvider.selesaiCount} Nota',
                       color: AppTheme.statusSuccess,
                       isHighlighted: true,
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => const TransactionListScreen(
+                              initialStatusFilter: TransactionStatus.selesai,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    _buildStatusRow(
+                      context: context,
+                      icon: Icons.task_alt_rounded,
+                      label: 'Sudah Diambil Pelanggan',
+                      count: '${txProvider.sudahDiambilCount} Nota',
+                      color: const Color(0xFF64748B),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const TransactionListScreen(
                               initialStatusFilter:
-                                  TransactionStatus.siapDiambil,
+                                  TransactionStatus.sudahDiambil,
                             ),
                           ),
                         );

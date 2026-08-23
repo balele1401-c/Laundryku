@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -9,6 +11,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/service_provider.dart';
 import '../../providers/transaction_provider.dart';
+import '../../services/receipt_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../utils/validators.dart';
@@ -35,6 +38,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       TextEditingController(text: '3.0');
   final TextEditingController _qtyTextController =
       TextEditingController(text: '1');
+  Timer? _debounceTimer;
 
   // Add-ons
   bool _addonParfum = false;
@@ -46,6 +50,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   bool _addonAntiBakteri = false;
   final double _hargaAntiBakteri = 3000;
 
+  // Metode Pembayaran: HANYA 2 opsi ("Tunai" dan "QRIS")
+  String _metodePembayaran = 'Tunai';
+
+  // Status Pembayaran: Lunas atau Belum Bayar
+  PaymentStatus _statusPembayaran = PaymentStatus.lunas;
+
   bool _isSaving = false;
 
   @override
@@ -56,6 +66,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _beratTextController.dispose();
     _qtyTextController.dispose();
     super.dispose();
@@ -90,38 +101,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
   DateTime get _estimatedCompletionDate {
     return DateTime.now().add(Duration(days: _effectiveEstimasiHari));
-  }
-
-  void _incrementWeight() {
-    setState(() {
-      _berat = (_berat + 0.5);
-      _beratTextController.text = _berat.toStringAsFixed(1);
-    });
-  }
-
-  void _decrementWeight() {
-    if (_berat > 0.5) {
-      setState(() {
-        _berat = (_berat - 0.5);
-        _beratTextController.text = _berat.toStringAsFixed(1);
-      });
-    }
-  }
-
-  void _incrementQty() {
-    setState(() {
-      _qty++;
-      _qtyTextController.text = _qty.toString();
-    });
-  }
-
-  void _decrementQty() {
-    if (_qty > 1) {
-      setState(() {
-        _qty--;
-        _qtyTextController.text = _qty.toString();
-      });
-    }
   }
 
   Future<void> _openQuickAddCustomerDialog() async {
@@ -384,6 +363,10 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   }
 
   Future<void> _handleSaveTransaction() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
     if (_selectedCustomer == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -438,6 +421,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       qty: _selectedService!.tipe == ServiceType.satuan ? _qty : null,
       hargaSatuan: _selectedService!.harga,
       totalHarga: _grandTotal,
+      metodePembayaran: _metodePembayaran,
+      statusPembayaran: _statusPembayaran,
       estimasiHari: _effectiveEstimasiHari,
       createdBy: auth.currentUser?.nama ?? 'Kasir',
     );
@@ -446,26 +431,119 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     setState(() => _isSaving = false);
 
     if (createdTx != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
+      final savedCustomer = _selectedCustomer;
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+          ),
+          title: Row(
             children: [
-              const Icon(Icons.check_circle_rounded,
-                  color: Colors.white, size: 20),
-              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.statusSuccess.withAlpha(30),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  color: AppTheme.statusSuccess,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Transaksi ${createdTx.nomorNota} berhasil dibuat!',
-                  style: GoogleFonts.inter(),
+                  'Transaksi Berhasil!',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
                 ),
               ),
             ],
           ),
-          backgroundColor: AppTheme.statusSuccess,
-          behavior: SnackBarBehavior.floating,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Nota: ${createdTx.nomorNota}',
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: AppTheme.signatureColor(context),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Pelanggan: ${createdTx.customerNama}',
+                style: GoogleFonts.inter(fontSize: 13),
+              ),
+              Text(
+                'Total: ${AppFormatters.rupiah(createdTx.totalHarga)} (${createdTx.metodePembayaran} • ${createdTx.statusPembayaran.label})',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Apakah Anda ingin langsung mencetak nota struk transaksi ini?',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[400]
+                      : Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'Nanti Saja',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).pop();
+                await ReceiptService.printReceipt(
+                  context,
+                  createdTx,
+                  customer: savedCustomer,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.signatureColor(context),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                ),
+              ),
+              icon: const Icon(Icons.print_rounded, size: 18),
+              label: Text(
+                'Cetak Nota Sekarang',
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
         ),
       );
-      Navigator.of(context).pop();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -509,42 +587,54 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── 1. Pilih Pelanggan ────────────────────────────
-                  _buildSectionHeader('1. Data Pelanggan', isDark),
+                  // ── Data Pelanggan ──────────────────────────────
+                  _buildSectionHeader('Data Pelanggan', isDark),
                   const SizedBox(height: 8),
                   _buildCustomerSection(context, isDark),
                   const SizedBox(height: 20),
 
-                  // ── 2. Pilih Layanan ─────────────────────────────
-                  _buildSectionHeader('2. Paket Layanan', isDark),
+                  // ── Paket Layanan ───────────────────────────────
+                  _buildSectionHeader('Paket Layanan', isDark),
                   const SizedBox(height: 8),
                   _buildServiceSection(context, isDark, services),
                   const SizedBox(height: 20),
 
-                  // ── 3. Berat / Qty Stepper ────────────────────────
+                  // ── Berat / Qty Stepper ──────────────────────────
                   if (_selectedService != null) ...[
                     _buildSectionHeader(
                       _selectedService!.tipe == ServiceType.kiloan
-                          ? '3. Timbangan Berat (kg)'
-                          : '3. Jumlah Potong (pcs)',
+                          ? 'Timbangan Berat (kg)'
+                          : 'Jumlah Potong (pcs)',
                       isDark,
                     ),
                     const SizedBox(height: 8),
                     _buildQuantitySection(context, isDark),
                     const SizedBox(height: 20),
 
-                    // ── 4. Layanan Tambahan (Add-ons) ────────────────
-                    _buildSectionHeader('4. Layanan Ekstra / Add-ons', isDark),
+                    // ── Layanan Tambahan (Add-ons) ──────────────────
+                    _buildSectionHeader('Layanan Ekstra / Add-ons', isDark),
                     const SizedBox(height: 8),
                     _buildAddonsSection(context, isDark),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
                   ],
 
-                  // ── 5. Real-time Calculation Card ─────────────────
+                  // ── Metode Pembayaran (HANYA Tunai & QRIS) ───────
+                  _buildSectionHeader('Metode Pembayaran', isDark),
+                  const SizedBox(height: 8),
+                  _buildPaymentMethodSection(context, isDark),
+                  const SizedBox(height: 20),
+
+                  // ── Status Pembayaran (Lunas / Belum Bayar) ───────
+                  _buildSectionHeader('Status Pembayaran', isDark),
+                  const SizedBox(height: 8),
+                  _buildPaymentStatusSection(context, isDark),
+                  const SizedBox(height: 24),
+
+                  // ── 7. Real-time Calculation Card ─────────────────
                   _buildCalculationCard(context, isDark),
                   const SizedBox(height: 24),
 
-                  // ── 6. Submit Button ──────────────────────────────
+                  // ── 8. Submit Button ──────────────────────────────
                   SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -776,14 +866,14 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
     return SignatureAccentCard(
       padding: const EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                isKiloan ? 'Total Berat Cucian' : 'Jumlah Pakaian',
+                isKiloan ? 'Input Berat Cucian' : 'Input Jumlah Pakaian',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -792,65 +882,111 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                       : AppTheme.lightTextPrimary,
                 ),
               ),
-              Text(
-                isKiloan
-                    ? 'Tarif @ ${AppFormatters.rupiah(_selectedService!.harga)} / kg'
-                    : 'Tarif @ ${AppFormatters.rupiah(_selectedService!.harga)} / pcs',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: isDark
-                      ? AppTheme.darkTextSecondary
-                      : AppTheme.lightTextSecondary,
-                ),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              // Minus Button
-              IconButton.filledTonal(
-                onPressed: isKiloan ? _decrementWeight : _decrementQty,
-                icon: const Icon(Icons.remove_rounded, size: 18),
-              ),
-              const SizedBox(width: 8),
-
-              // Value Display
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? AppTheme.darkInputFill
-                      : AppTheme.lightInputFill,
-                  borderRadius:
-                      BorderRadius.circular(AppTheme.radiusSmall),
-                  border: Border.all(color: AppTheme.borderColor(context)),
+                  color: AppTheme.signatureColor(context)
+                      .withAlpha(isDark ? 40 : 25),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
                 ),
                 child: Text(
-                  isKiloan ? '$_berat kg' : '$_qty pcs',
+                  isKiloan
+                      ? 'Tarif @ ${AppFormatters.rupiah(_selectedService!.harga)} / kg'
+                      : 'Tarif @ ${AppFormatters.rupiah(_selectedService!.harga)} / pcs',
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: isDark
-                        ? AppTheme.darkTextPrimary
-                        : AppTheme.lightTextPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.signatureColor(context),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-
-              // Plus Button
-              IconButton.filled(
-                onPressed: isKiloan ? _incrementWeight : _incrementQty,
-                style: IconButton.styleFrom(
-                  backgroundColor: AppTheme.signatureColor(context),
-                  foregroundColor:
-                      isDark ? const Color(0xFF0F172A) : Colors.white,
-                ),
-                icon: const Icon(Icons.add_rounded, size: 18),
-              ),
             ],
           ),
+          const SizedBox(height: 12),
+          if (isKiloan)
+            TextFormField(
+              controller: _beratTextController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+              ],
+              decoration: InputDecoration(
+                labelText: 'Berat Cucian (kg)',
+                hintText: 'Contoh: 3.5',
+                prefixIcon: const Icon(Icons.scale_outlined, size: 20),
+                suffixText: 'kg',
+                suffixStyle: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.signatureColor(context),
+                ),
+                helperText: 'Maksimal 2 angka desimal (cth: 3.25)',
+              ),
+              validator: (val) {
+                if (val == null || val.trim().isEmpty) {
+                  return 'Berat cucian wajib diisi';
+                }
+                final cleaned = val.replaceAll(',', '.').trim();
+                final parsed = double.tryParse(cleaned);
+                if (parsed == null || parsed <= 0) {
+                  return 'Berat harus berupa angka lebih dari 0 kg';
+                }
+                return null;
+              },
+              onChanged: (val) {
+                _debounceTimer?.cancel();
+                _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+                  final cleaned = val.replaceAll(',', '.').trim();
+                  final parsed = double.tryParse(cleaned);
+                  if (parsed != null && parsed > 0 && mounted) {
+                    setState(() {
+                      _berat = parsed;
+                    });
+                  }
+                });
+              },
+            )
+          else
+            TextFormField(
+              controller: _qtyTextController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+              ],
+              decoration: InputDecoration(
+                labelText: 'Jumlah Potong (pcs)',
+                hintText: 'Contoh: 5',
+                prefixIcon: const Icon(Icons.checkroom_outlined, size: 20),
+                suffixText: 'pcs',
+                suffixStyle: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.signatureColor(context),
+                ),
+                helperText: 'Masukkan jumlah potong pakaian',
+              ),
+              validator: (val) {
+                if (val == null || val.trim().isEmpty) {
+                  return 'Jumlah pakaian wajib diisi';
+                }
+                final parsed = int.tryParse(val.trim());
+                if (parsed == null || parsed <= 0) {
+                  return 'Jumlah harus minimal 1 pcs';
+                }
+                return null;
+              },
+              onChanged: (val) {
+                _debounceTimer?.cancel();
+                _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+                  final parsed = int.tryParse(val.trim());
+                  if (parsed != null && parsed > 0 && mounted) {
+                    setState(() {
+                      _qty = parsed;
+                    });
+                  }
+                });
+              },
+            ),
         ],
       ),
     );
@@ -1019,6 +1155,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               isDark,
             ),
           ],
+          const SizedBox(height: 6),
+          _buildCalcRow(
+            'Metode Pembayaran',
+            _metodePembayaran,
+            isDark,
+          ),
           const SizedBox(height: 10),
           const Divider(height: 1),
           const SizedBox(height: 10),
@@ -1090,6 +1232,167 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodSection(BuildContext context, bool isDark) {
+    return Row(
+      children: [
+        // Opsi 1: Tunai
+        Expanded(
+          child: _buildPaymentMethodOption(
+            context: context,
+            isDark: isDark,
+            title: 'Tunai',
+            subtitle: 'Cash saat bayar/ambil',
+            icon: Icons.payments_outlined,
+            isSelected: _metodePembayaran == 'Tunai',
+            accentColor: AppTheme.statusSuccess,
+            onTap: () => setState(() => _metodePembayaran = 'Tunai'),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Opsi 2: QRIS
+        Expanded(
+          child: _buildPaymentMethodOption(
+            context: context,
+            isDark: isDark,
+            title: 'QRIS',
+            subtitle: 'Scan QR e-Wallet/Bank',
+            icon: Icons.qr_code_scanner_rounded,
+            isSelected: _metodePembayaran == 'QRIS',
+            accentColor: AppTheme.signatureColor(context),
+            onTap: () => setState(() => _metodePembayaran = 'QRIS'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentStatusSection(BuildContext context, bool isDark) {
+    return Row(
+      children: [
+        // Opsi 1: Lunas
+        Expanded(
+          child: _buildPaymentMethodOption(
+            context: context,
+            isDark: isDark,
+            title: 'Lunas',
+            subtitle: 'Sudah dibayar sekarang',
+            icon: Icons.check_circle_outline_rounded,
+            isSelected: _statusPembayaran == PaymentStatus.lunas,
+            accentColor: const Color(0xFF10B981),
+            onTap: () =>
+                setState(() => _statusPembayaran = PaymentStatus.lunas),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Opsi 2: Belum Bayar
+        Expanded(
+          child: _buildPaymentMethodOption(
+            context: context,
+            isDark: isDark,
+            title: 'Belum Bayar',
+            subtitle: 'Bayar nanti / saat ambil',
+            icon: Icons.schedule_rounded,
+            isSelected: _statusPembayaran == PaymentStatus.belumBayar,
+            accentColor: const Color(0xFFF59E0B),
+            onTap: () =>
+                setState(() => _statusPembayaran = PaymentStatus.belumBayar),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentMethodOption({
+    required BuildContext context,
+    required bool isDark,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isSelected,
+    required Color accentColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? accentColor.withAlpha(isDark ? 45 : 25)
+              : (isDark ? AppTheme.darkSurface : AppTheme.lightSurface),
+          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+          border: Border.all(
+            color: isSelected ? accentColor : AppTheme.borderColor(context),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? accentColor.withAlpha(isDark ? 60 : 30)
+                        : (isDark
+                            ? const Color(0xFF334155)
+                            : const Color(0xFFF1F5F9)),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: isSelected
+                        ? accentColor
+                        : (isDark
+                            ? AppTheme.darkTextSecondary
+                            : AppTheme.lightTextSecondary),
+                  ),
+                ),
+                if (isSelected)
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: accentColor,
+                    size: 20,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 15,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
+                color: isSelected
+                    ? (isDark ? Colors.white : AppTheme.lightPrimary)
+                    : (isDark
+                        ? AppTheme.darkTextPrimary
+                        : AppTheme.lightTextPrimary),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: isDark
+                    ? AppTheme.darkTextSecondary
+                    : AppTheme.lightTextSecondary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }

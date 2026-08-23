@@ -20,7 +20,6 @@ import '../transaction/transaction_list_screen.dart';
 import '../transaction/transaction_form_screen.dart';
 import '../transaction/transaction_detail_screen.dart';
 import '../report/report_screen.dart';
-import '../../utils/demo_data_seeder.dart';
 
 class OwnerDashboardScreen extends StatelessWidget {
   const OwnerDashboardScreen({super.key});
@@ -55,11 +54,6 @@ class OwnerDashboardScreen extends StatelessWidget {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.dataset_linked_outlined),
-            tooltip: 'Isi Data Demo (Klien)',
-            onPressed: () => _confirmSeedDemoData(context),
-          ),
           const ThemeToggleButton(),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
@@ -289,15 +283,15 @@ class OwnerDashboardScreen extends StatelessWidget {
                           child: _buildMetricCard(
                             context: context,
                             icon: Icons.check_circle_outline_rounded,
-                            title: 'Siap Diambil',
-                            value: '${txProvider.siapDiambilCount} Nota',
-                            accentColor: AppTheme.lightAccent,
+                            title: 'Cucian Selesai',
+                            value: '${txProvider.selesaiCount} Nota',
+                            accentColor: AppTheme.statusSuccess,
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const TransactionListScreen(
                                     initialStatusFilter:
-                                        TransactionStatus.siapDiambil,
+                                        TransactionStatus.selesai,
                                   ),
                                 ),
                               );
@@ -308,20 +302,39 @@ class OwnerDashboardScreen extends StatelessWidget {
                         Expanded(
                           child: _buildMetricCard(
                             context: context,
-                            icon: Icons.people_outline_rounded,
-                            title: 'Total Pelanggan',
-                            value: '${customerProvider.totalCustomers} Orang',
-                            accentColor: AppTheme.ctaColor(context),
+                            icon: Icons.schedule_rounded,
+                            title: 'Belum Diambil',
+                            value: '${txProvider.belumDiambilCount} Nota',
+                            accentColor: const Color(0xFFF59E0B),
                             onTap: () {
+                              final provider = context.read<TransactionProvider>();
+                              if (!provider.filterBelumDiambilOnly) {
+                                provider.toggleFilterBelumDiambil();
+                              }
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const CustomerListScreen(),
+                                  builder: (_) => const TransactionListScreen(),
                                 ),
                               );
                             },
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildMetricCard(
+                      context: context,
+                      icon: Icons.people_outline_rounded,
+                      title: 'Total Pelanggan Terdaftar',
+                      value: '${customerProvider.totalCustomers} Orang',
+                      accentColor: AppTheme.ctaColor(context),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CustomerListScreen(),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -507,17 +520,10 @@ class OwnerDashboardScreen extends StatelessWidget {
       case TransactionStatus.diterima:
         statusColor = AppTheme.statusWarning;
         break;
-      case TransactionStatus.prosesCuci:
-        statusColor =
-            isDark ? AppTheme.darkPrimary : AppTheme.lightPrimaryVariant;
-        break;
-      case TransactionStatus.prosesSetrika:
-        statusColor = AppTheme.signatureColor(context);
-        break;
-      case TransactionStatus.siapDiambil:
+      case TransactionStatus.selesai:
         statusColor = AppTheme.statusSuccess;
         break;
-      case TransactionStatus.selesai:
+      case TransactionStatus.sudahDiambil:
         statusColor = const Color(0xFF64748B);
         break;
     }
@@ -550,7 +556,79 @@ class OwnerDashboardScreen extends StatelessWidget {
                             : AppTheme.lightTextSecondary,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: (tx.metodePembayaran.toUpperCase() == 'QRIS'
+                                ? (isDark
+                                    ? const Color(0xFF818CF8)
+                                    : const Color(0xFF4F46E5))
+                                : (isDark
+                                    ? const Color(0xFF34D399)
+                                    : const Color(0xFF059669)))
+                            .withAlpha(isDark ? 35 : 20),
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusSmall),
+                        border: Border.all(
+                          color: (tx.metodePembayaran.toUpperCase() == 'QRIS'
+                                  ? (isDark
+                                      ? const Color(0xFF818CF8)
+                                      : const Color(0xFF4F46E5))
+                                  : (isDark
+                                      ? const Color(0xFF34D399)
+                                      : const Color(0xFF059669)))
+                              .withAlpha(isDark ? 70 : 40),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Text(
+                        tx.metodePembayaran,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: tx.metodePembayaran.toUpperCase() == 'QRIS'
+                              ? (isDark
+                                  ? const Color(0xFF818CF8)
+                                  : const Color(0xFF4F46E5))
+                              : (isDark
+                                  ? const Color(0xFF34D399)
+                                  : const Color(0xFF059669)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: (tx.isLunas
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFFE11D48))
+                            .withAlpha(isDark ? 35 : 20),
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusSmall),
+                        border: Border.all(
+                          color: (tx.isLunas
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFE11D48))
+                              .withAlpha(isDark ? 70 : 40),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Text(
+                        tx.isLunas ? 'Lunas' : 'Belum Bayar',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: tx.isLunas
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFE11D48),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
@@ -566,6 +644,53 @@ class OwnerDashboardScreen extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                           color: statusColor,
                         ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: (tx.isSudahDiambil
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFFF59E0B))
+                            .withAlpha(isDark ? 35 : 20),
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusSmall),
+                        border: Border.all(
+                          color: (tx.isSudahDiambil
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFF59E0B))
+                              .withAlpha(isDark ? 70 : 40),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            tx.isSudahDiambil
+                                ? Icons.check_circle_rounded
+                                : Icons.access_time_rounded,
+                            size: 9,
+                            color: tx.isSudahDiambil
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFFF59E0B),
+                          ),
+                          const SizedBox(width: 2.5),
+                          Text(
+                            tx.isSudahDiambil
+                                ? 'Sudah Diambil'
+                                : 'Belum Diambil',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: tx.isSudahDiambil
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFF59E0B),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -772,100 +897,6 @@ class OwnerDashboardScreen extends StatelessWidget {
             ),
             child: Text(
               'Keluar',
-              style: GoogleFonts.plusJakartaSans(
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _confirmSeedDemoData(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor:
-            isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-          side: BorderSide(
-            color: AppTheme.borderColor(context),
-          ),
-        ),
-        title: Row(
-          children: [
-            const Icon(Icons.dataset_rounded, color: Color(0xFF0EA5E9)),
-            const SizedBox(width: 10),
-            Text(
-              'Isi Data Demo Klien',
-              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-        content: Text(
-          'Akan membuat 7 pelanggan dummy, 5 katalog layanan, dan 14 nota transaksi otomatis di Firestore untuk keperluan presentasi demo.\n\nLanjutkan?',
-          style: GoogleFonts.inter(fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(
-              'Batal',
-              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              final scaffold = ScaffoldMessenger.of(context);
-              scaffold.showSnackBar(
-                const SnackBar(
-                  content: Text('⏳ Sedang memuat data demo ke Firestore...'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-
-              final result = await DemoDataSeeder.seedDemoData();
-
-              scaffold.showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: [
-                      Icon(
-                        result.isSuccess
-                            ? Icons.check_circle_rounded
-                            : Icons.error_outline_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          result.message,
-                          style: GoogleFonts.inter(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  backgroundColor: result.isSuccess
-                      ? AppTheme.statusSuccess
-                      : AppTheme.statusError,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.ctaColor(context),
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              'Isi Data Demo',
               style: GoogleFonts.plusJakartaSans(
                 fontWeight: FontWeight.w700,
                 color: Colors.white,

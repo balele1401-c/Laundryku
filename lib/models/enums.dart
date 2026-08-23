@@ -12,27 +12,21 @@ enum UserRole {
   }
 }
 
-/// Enum untuk status transaksi laundry — mengikuti alur proses.
+/// Enum untuk status transaksi laundry — mengikuti alur 3 tahap: Diterima -> Selesai -> Sudah Diambil.
 enum TransactionStatus {
   diterima,
-  prosesCuci,
-  prosesSetrika,
-  siapDiambil,
-  selesai;
+  selesai,
+  sudahDiambil;
 
   /// Label yang ramah tampilan (UI-friendly).
   String get label {
     switch (this) {
       case TransactionStatus.diterima:
         return 'Diterima';
-      case TransactionStatus.prosesCuci:
-        return 'Proses Cuci';
-      case TransactionStatus.prosesSetrika:
-        return 'Proses Setrika';
-      case TransactionStatus.siapDiambil:
-        return 'Siap Diambil';
       case TransactionStatus.selesai:
         return 'Selesai';
+      case TransactionStatus.sudahDiambil:
+        return 'Sudah Diambil';
     }
   }
 
@@ -41,14 +35,10 @@ enum TransactionStatus {
     switch (this) {
       case TransactionStatus.diterima:
         return 'diterima';
-      case TransactionStatus.prosesCuci:
-        return 'proses_cuci';
-      case TransactionStatus.prosesSetrika:
-        return 'proses_setrika';
-      case TransactionStatus.siapDiambil:
-        return 'siap_diambil';
       case TransactionStatus.selesai:
         return 'selesai';
+      case TransactionStatus.sudahDiambil:
+        return 'sudah_diambil';
     }
   }
 
@@ -57,14 +47,10 @@ enum TransactionStatus {
     switch (value) {
       case 'diterima':
         return TransactionStatus.diterima;
-      case 'proses_cuci':
-        return TransactionStatus.prosesCuci;
-      case 'proses_setrika':
-        return TransactionStatus.prosesSetrika;
-      case 'siap_diambil':
-        return TransactionStatus.siapDiambil;
       case 'selesai':
         return TransactionStatus.selesai;
+      case 'sudah_diambil':
+        return TransactionStatus.sudahDiambil;
       default:
         return TransactionStatus.diterima;
     }
@@ -92,3 +78,42 @@ enum ServiceType {
     );
   }
 }
+
+/// Enum untuk status pembayaran transaksi.
+enum PaymentStatus {
+  belumBayar,
+  lunas;
+
+  String get label {
+    switch (this) {
+      case PaymentStatus.belumBayar:
+        return 'Belum Bayar';
+      case PaymentStatus.lunas:
+        return 'Lunas';
+    }
+  }
+
+  String get firestoreValue {
+    switch (this) {
+      case PaymentStatus.belumBayar:
+        return 'belum_bayar';
+      case PaymentStatus.lunas:
+        return 'lunas';
+    }
+  }
+
+  static PaymentStatus fromString(String value) {
+    switch (value.toLowerCase()) {
+      case 'belum_bayar':
+      case 'belumbayar':
+      case 'belum bayar':
+      case 'unpaid':
+        return PaymentStatus.belumBayar;
+      case 'lunas':
+      case 'paid':
+      default:
+        return PaymentStatus.lunas;
+    }
+  }
+}
+

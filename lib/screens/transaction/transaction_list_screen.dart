@@ -63,13 +63,9 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     switch (status) {
       case TransactionStatus.diterima:
         return AppTheme.statusWarning;
-      case TransactionStatus.prosesCuci:
-        return isDark ? AppTheme.darkPrimary : AppTheme.lightPrimaryVariant;
-      case TransactionStatus.prosesSetrika:
-        return AppTheme.signatureColor(context);
-      case TransactionStatus.siapDiambil:
-        return AppTheme.statusSuccess;
       case TransactionStatus.selesai:
+        return AppTheme.statusSuccess;
+      case TransactionStatus.sudahDiambil:
         return isDark ? const Color(0xFF64748B) : const Color(0xFF475569);
     }
   }
@@ -81,6 +77,10 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     final txProvider = context.watch<TransactionProvider>();
     final transactions = txProvider.transactions;
     final currentStatus = txProvider.filterStatus;
+    final isFiltered = currentStatus != null ||
+        txProvider.filterBelumBayarOnly ||
+        txProvider.filterBelumDiambilOnly ||
+        txProvider.searchQuery.isNotEmpty;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -119,10 +119,9 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
             // ── Transactions List ─────────────────────────────────
             Expanded(
               child: txProvider.isLoading && transactions.isEmpty
-                  ? const SkeletonLoadingList(itemCount: 6, itemHeight: 110)
+                  ? const SkeletonLoadingList(itemCount: 6, itemHeight: 120)
                   : transactions.isEmpty
-                      ? _buildEmptyState(
-                          context, isDark, currentStatus != null)
+                      ? _buildEmptyState(context, isDark, isFiltered)
                       : RefreshIndicator(
                           onRefresh: () async {
                             await Future.delayed(
@@ -158,8 +157,13 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     TransactionProvider provider,
     TransactionStatus? currentStatus,
   ) {
+    final hasActiveFilter = currentStatus != null ||
+        provider.filterBelumBayarOnly ||
+        provider.filterBelumDiambilOnly ||
+        provider.searchQuery.isNotEmpty;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
         border: Border(
@@ -195,9 +199,9 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          // Horizontal Status Filter Chips
+          // Baris 1: Status Alur Laundry Chips (3 Tahap: Diterima -> Selesai -> Sudah Diambil)
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -220,46 +224,160 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                 ),
                 const SizedBox(width: 6),
                 _buildStatusFilterChip(
-                  label: 'Cuci (${provider.prosesCuciCount})',
-                  isSelected: currentStatus == TransactionStatus.prosesCuci,
+                  label: 'Selesai (${provider.selesaiCount})',
+                  isSelected: currentStatus == TransactionStatus.selesai,
                   onTap: () =>
-                      provider.setFilterStatus(TransactionStatus.prosesCuci),
-                  color: isDark
-                      ? AppTheme.darkPrimary
-                      : AppTheme.lightPrimaryVariant,
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 6),
-                _buildStatusFilterChip(
-                  label: 'Setrika (${provider.prosesSetrikaCount})',
-                  isSelected: currentStatus == TransactionStatus.prosesSetrika,
-                  onTap: () =>
-                      provider.setFilterStatus(TransactionStatus.prosesSetrika),
-                  color: AppTheme.signatureColor(context),
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 6),
-                _buildStatusFilterChip(
-                  label: 'Siap Diambil (${provider.siapDiambilCount})',
-                  isSelected: currentStatus == TransactionStatus.siapDiambil,
-                  onTap: () =>
-                      provider.setFilterStatus(TransactionStatus.siapDiambil),
+                      provider.setFilterStatus(TransactionStatus.selesai),
                   color: AppTheme.statusSuccess,
                   isDark: isDark,
                 ),
                 const SizedBox(width: 6),
                 _buildStatusFilterChip(
-                  label: 'Selesai',
-                  isSelected: currentStatus == TransactionStatus.selesai,
+                  label: 'Sudah Diambil (${provider.sudahDiambilCount})',
+                  isSelected: currentStatus == TransactionStatus.sudahDiambil,
                   onTap: () =>
-                      provider.setFilterStatus(TransactionStatus.selesai),
+                      provider.setFilterStatus(TransactionStatus.sudahDiambil),
                   color: const Color(0xFF64748B),
                   isDark: isDark,
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 8),
+
+          // Baris 2: Quick Filter Khusus (Belum Bayar & Belum Diambil)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                // Quick Filter: Belum Bayar
+                _buildQuickToggleChip(
+                  context: context,
+                  label: 'Belum Bayar (${provider.belumBayarCount})',
+                  icon: Icons.error_outline_rounded,
+                  isSelected: provider.filterBelumBayarOnly,
+                  activeColor: const Color(0xFFE11D48),
+                  isDark: isDark,
+                  onTap: () => provider.toggleFilterBelumBayar(),
+                ),
+                const SizedBox(width: 8),
+                // Quick Filter: Belum Diambil
+                _buildQuickToggleChip(
+                  context: context,
+                  label: 'Belum Diambil (${provider.belumDiambilCount})',
+                  icon: Icons.schedule_rounded,
+                  isSelected: provider.filterBelumDiambilOnly,
+                  activeColor: const Color(0xFFD97706),
+                  isDark: isDark,
+                  onTap: () => provider.toggleFilterBelumDiambil(),
+                ),
+                if (hasActiveFilter) ...[
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () {
+                      _searchController.clear();
+                      provider.clearFilters();
+                    },
+                    borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: (isDark
+                                ? Colors.white
+                                : Colors.black)
+                            .withAlpha(isDark ? 20 : 10),
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusSmall),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.refresh_rounded,
+                            size: 13,
+                            color: isDark
+                                ? AppTheme.darkTextSecondary
+                                : AppTheme.lightTextSecondary,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            'Reset Filter',
+                            style: GoogleFonts.inter(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: isDark
+                                  ? AppTheme.darkTextSecondary
+                                  : AppTheme.lightTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildQuickToggleChip({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required Color activeColor,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? activeColor.withAlpha(isDark ? 60 : 30)
+              : (isDark
+                  ? const Color(0xFF1E293B)
+                  : const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+          border: Border.all(
+            color: isSelected ? activeColor : AppTheme.borderColor(context),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: isSelected
+                  ? activeColor
+                  : (isDark
+                      ? AppTheme.darkTextSecondary
+                      : AppTheme.lightTextSecondary),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected
+                    ? activeColor
+                    : (isDark
+                        ? AppTheme.darkTextSecondary
+                        : AppTheme.lightTextSecondary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -275,7 +393,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: isSelected
               ? color.withAlpha(isDark ? 60 : 30)
@@ -310,171 +428,370 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     bool isDark,
   ) {
     final statusColor = _getStatusColor(tx.status, isDark);
-    final isOverdue = tx.status != TransactionStatus.selesai &&
-        DateTime.now().isAfter(tx.estimasiSelesai);
+    final isOverdue = tx.isOverdue;
+    final isAttention = tx.isAttentionRequired;
 
     final isKiloan = tx.tipeLayanan == ServiceType.kiloan;
     final qtyText = isKiloan ? '${tx.berat ?? "-"} kg' : '${tx.qty ?? "-"} pcs';
 
-    return Stack(
-      children: [
-        SignatureAccentCard(
-          onTap: () => _openDetail(tx),
-          accentColor: isOverdue ? AppTheme.statusError : statusColor,
-          padding: const EdgeInsets.all(15),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Row 1: Nomor Nota + Status Badge
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    final effectiveAccentColor = isAttention
+        ? const Color(0xFFE11D48)
+        : (isOverdue ? AppTheme.statusError : statusColor);
+
+    return SignatureAccentCard(
+      onTap: () => _openDetail(tx),
+      accentColor: effectiveAccentColor,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Highlight Alert Strip (Jika cucian selesai/siap diambil tapi belum bayar) ──
+          if (isAttention) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE11D48).withAlpha(isDark ? 40 : 20),
+                borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+                border: Border.all(
+                  color: const Color(0xFFE11D48).withAlpha(isDark ? 80 : 50),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
+                  const Icon(Icons.warning_amber_rounded,
+                      size: 13, color: Color(0xFFE11D48)),
+                  const SizedBox(width: 4),
                   Text(
-                    tx.nomorNota,
+                    'PERHATIAN: CUCIAN SIAP / BELUM BAYAR (TAGIH PEMBAYARAN)',
                     style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
+                      fontSize: 9.5,
                       fontWeight: FontWeight.w800,
-                      color: isDark
-                          ? AppTheme.darkTextPrimary
-                          : AppTheme.lightPrimary,
+                      color: const Color(0xFFE11D48),
                       letterSpacing: 0.2,
                     ),
                   ),
-                  Row(
+                ],
+              ),
+            ),
+          ],
+
+          // Row 1: Nomor Nota + Status Alur Badge
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                tx.nomorNota,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: isDark
+                      ? AppTheme.darkTextPrimary
+                      : AppTheme.lightPrimary,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withAlpha(isDark ? 45 : 25),
+                  borderRadius:
+                      BorderRadius.circular(AppTheme.radiusSmall),
+                ),
+                child: Text(
+                  tx.status.label.toUpperCase(),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: statusColor,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          // Row 2: Customer Name + Tanggal Masuk
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  tx.customerNama,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: isDark
+                        ? AppTheme.darkTextPrimary
+                        : AppTheme.lightTextPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                AppFormatters.date(tx.tanggalMasuk),
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: isDark
+                      ? AppTheme.darkTextHint
+                      : AppTheme.lightTextHint,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+
+          // Row 3: Service & Qty + Total Harga
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      isKiloan
+                          ? Icons.local_laundry_service_outlined
+                          : Icons.checkroom_outlined,
+                      size: 14,
+                      color: isDark
+                          ? AppTheme.darkTextSecondary
+                          : AppTheme.lightTextSecondary,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        '${tx.jenisLayanan} • $qtyText',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: isDark
+                              ? AppTheme.darkTextSecondary
+                              : AppTheme.lightTextSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                AppFormatters.rupiah(tx.totalHarga),
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: isDark
+                      ? AppTheme.darkPrimary
+                      : AppTheme.lightPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+
+          // Row 4: BADGES BAR (Status Pengambilan, Status Pembayaran, Metode, WA Notif)
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // 1. Badge STATUS PENGAMBILAN
+              _buildPickupStatusBadge(context, tx.isSudahDiambil, isDark),
+
+              // 2. Badge STATUS PEMBAYARAN
+              _buildPaymentStatusBadge(context, tx.isLunas, isDark),
+
+              // 3. Badge METODE PEMBAYARAN (Tunai / QRIS)
+              _buildPaymentMethodBadge(context, tx.metodePembayaran, isDark),
+
+              // 4. Badge WhatsApp Sent if applicable
+              if (tx.waNotifSentAt != null)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.statusSuccess.withAlpha(isDark ? 30 : 18),
+                    borderRadius:
+                        BorderRadius.circular(AppTheme.radiusSmall),
+                    border: Border.all(
+                      color: AppTheme.statusSuccess.withAlpha(isDark ? 70 : 40),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (tx.waNotifSentAt != null) ...[
-                        Container(
-                          margin: const EdgeInsets.only(right: 6),
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            color: AppTheme.statusSuccess.withAlpha(25),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.check_circle,
-                              size: 13, color: AppTheme.statusSuccess),
-                        ),
-                      ],
-                      if (isOverdue) ...[
-                        Container(
-                          margin: const EdgeInsets.only(right: 6),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.statusError.withAlpha(30),
-                            borderRadius:
-                                BorderRadius.circular(AppTheme.radiusSmall),
-                            border: Border.all(
-                                color: AppTheme.statusError, width: 1),
-                          ),
-                          child: Text(
-                            'LEWAT ESTIMASI',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: AppTheme.statusError,
-                            ),
-                          ),
-                        ),
-                      ],
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: statusColor.withAlpha(isDark ? 45 : 25),
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.radiusSmall),
-                        ),
-                        child: Text(
-                          tx.status.label.toUpperCase(),
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: statusColor,
-                            letterSpacing: 0.5,
-                          ),
+                      const Icon(Icons.check_circle,
+                          size: 11, color: AppTheme.statusSuccess),
+                      const SizedBox(width: 3),
+                      Text(
+                        'WA Sent',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.statusSuccess,
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              // Row 2: Customer Name
-              Text(
-                tx.customerNama,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: isDark
-                      ? AppTheme.darkTextPrimary
-                      : AppTheme.lightTextPrimary,
                 ),
-              ),
-              const SizedBox(height: 4),
 
-              // Row 3: Service & Qty
-              Row(
-                children: [
-                  Icon(
-                    isKiloan
-                        ? Icons.local_laundry_service_outlined
-                        : Icons.checkroom_outlined,
-                    size: 14,
-                    color: isDark
-                        ? AppTheme.darkTextSecondary
-                        : AppTheme.lightTextSecondary,
+              // 5. Badge Overdue if applicable
+              if (isOverdue)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.statusError.withAlpha(isDark ? 35 : 20),
+                    borderRadius:
+                        BorderRadius.circular(AppTheme.radiusSmall),
+                    border: Border.all(
+                        color: AppTheme.statusError, width: 0.8),
                   ),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(
-                      '${tx.jenisLayanan} • $qtyText',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: isDark
-                            ? AppTheme.darkTextSecondary
-                            : AppTheme.lightTextSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-
-              // Row 4: Total Price + Date
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    AppFormatters.date(tx.tanggalMasuk),
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: isDark
-                          ? AppTheme.darkTextHint
-                          : AppTheme.lightTextHint,
-                    ),
-                  ),
-                  Text(
-                    AppFormatters.rupiah(tx.totalHarga),
+                  child: Text(
+                    'LEWAT ESTIMASI',
                     style: GoogleFonts.plusJakartaSans(
-                      fontSize: 15,
+                      fontSize: 8.5,
                       fontWeight: FontWeight.w800,
-                      color: isDark
-                          ? AppTheme.darkPrimary
-                          : AppTheme.lightPrimary,
+                      color: AppTheme.statusError,
                     ),
                   ),
-                ],
-              ),
+                ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Badge Status Pengambilan ("Belum Diambil" vs "Sudah Diambil")
+  Widget _buildPickupStatusBadge(
+      BuildContext context, bool isSudahDiambil, bool isDark) {
+    final color = isSudahDiambil
+        ? const Color(0xFF10B981)
+        : const Color(0xFFD97706);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(isDark ? 35 : 20),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+        border: Border.all(
+          color: color.withAlpha(isDark ? 80 : 50),
+          width: 0.8,
         ),
-      ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isSudahDiambil
+                ? Icons.check_circle_rounded
+                : Icons.schedule_rounded,
+            size: 11,
+            color: color,
+          ),
+          const SizedBox(width: 3.5),
+          Text(
+            isSudahDiambil ? 'Sudah Diambil' : 'Belum Diambil',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Badge Status Pembayaran ("Belum Bayar" vs "Lunas")
+  Widget _buildPaymentStatusBadge(
+      BuildContext context, bool isLunas, bool isDark) {
+    final color = isLunas
+        ? const Color(0xFF10B981)
+        : const Color(0xFFE11D48);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(isDark ? 35 : 20),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+        border: Border.all(
+          color: color.withAlpha(isDark ? 80 : 50),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isLunas
+                ? Icons.verified_rounded
+                : Icons.priority_high_rounded,
+            size: 11,
+            color: color,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            isLunas ? 'Lunas' : 'Belum Bayar',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Badge Metode Pembayaran (Tunai / QRIS)
+  Widget _buildPaymentMethodBadge(
+      BuildContext context, String method, bool isDark) {
+    final isQris = method.toUpperCase() == 'QRIS';
+    final badgeColor = isQris
+        ? (isDark ? const Color(0xFF818CF8) : const Color(0xFF4F46E5))
+        : (isDark ? const Color(0xFF34D399) : const Color(0xFF059669));
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: badgeColor.withAlpha(isDark ? 35 : 20),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+        border: Border.all(
+          color: badgeColor.withAlpha(isDark ? 80 : 50),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isQris ? Icons.qr_code_2_rounded : Icons.payments_outlined,
+            size: 11,
+            color: badgeColor,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            isQris ? 'QRIS' : 'Tunai',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              color: badgeColor,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -510,7 +827,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
             const SizedBox(height: 20),
             Text(
               isFiltered
-                  ? 'Tidak Ada Transaksi di Kategori Ini'
+                  ? 'Tidak Ada Transaksi di Filter Ini'
                   : 'Belum Ada Riwayat Transaksi',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 17,
@@ -524,7 +841,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
             const SizedBox(height: 6),
             Text(
               isFiltered
-                  ? 'Coba ganti filter status atau kata kunci pencarian.'
+                  ? 'Coba ubah status alur, filter Belum Bayar/Diambil, atau kata kunci pencarian.'
                   : 'Buat transaksi nota cucian baru untuk mulai mencatat pesanan pelanggan.',
               style: GoogleFonts.inter(
                 fontSize: 13,
@@ -556,3 +873,4 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     );
   }
 }
+

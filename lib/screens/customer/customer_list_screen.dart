@@ -58,13 +58,25 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
       cleaned = '62${cleaned.substring(1)}';
     }
     final url = Uri.parse('https://wa.me/$cleaned');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+        if (!launched && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tidak dapat membuka WhatsApp. Pastikan WhatsApp terpasang.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Tidak dapat membuka WhatsApp.'),
+          SnackBar(
+            content: Text('Gagal membuka WhatsApp: $e'),
             behavior: SnackBarBehavior.floating,
           ),
         );

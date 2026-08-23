@@ -9,6 +9,7 @@ import '../../models/enums.dart';
 import '../../models/transaction_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/transaction_provider.dart';
+import '../../services/report_export_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/accent_card.dart';
@@ -31,6 +32,10 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   ReportPeriod _selectedPeriod = ReportPeriod.thisWeek;
   DateTimeRange? _customDateRange;
+
+  bool _isExportingPdf = false;
+  bool _isExportingExcel = false;
+  bool _isExportingWord = false;
 
   DateTime get _startDate {
     final now = DateTime.now();
@@ -64,6 +69,21 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
+  String get _selectedPeriodLabel {
+    switch (_selectedPeriod) {
+      case ReportPeriod.today:
+        return 'Hari Ini';
+      case ReportPeriod.thisWeek:
+        return '7 Hari Terakhir';
+      case ReportPeriod.thisMonth:
+        return 'Bulan Ini';
+      case ReportPeriod.custom:
+        return _customDateRange != null
+            ? '${DateFormat('d/M').format(_customDateRange!.start)} - ${DateFormat('d/M').format(_customDateRange!.end)}'
+            : 'Kustom';
+    }
+  }
+
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
     final picked = await showDateRangePicker(
@@ -89,6 +109,142 @@ class _ReportScreenState extends State<ReportScreen> {
         _selectedPeriod = ReportPeriod.custom;
         _customDateRange = picked;
       });
+    }
+  }
+
+  // ── Handlers Ekspor Laporan ───────────────────────────────────────────────
+
+  void _showSnackBar({
+    required String message,
+    required Color backgroundColor,
+    required IconData icon,
+  }) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.inter(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _exportPdf(List<TransactionModel> txs) async {
+    if (txs.isEmpty) {
+      _showSnackBar(
+        message: 'Tidak ada data transaksi pada periode ini untuk diekspor ke PDF.',
+        backgroundColor: AppTheme.statusWarning,
+        icon: Icons.warning_amber_rounded,
+      );
+      return;
+    }
+
+    setState(() => _isExportingPdf = true);
+    try {
+      await ReportExportService.sharePdfReport(
+        startDate: _startDate,
+        endDate: _endDate,
+        transactions: txs,
+        title: 'Laporan Keuangan LaundryKu - $_selectedPeriodLabel',
+      );
+
+      _showSnackBar(
+        message: 'Laporan PDF berhasil dibuat & siap dibagikan/diunduh!',
+        backgroundColor: AppTheme.statusSuccess,
+        icon: Icons.check_circle_rounded,
+      );
+    } catch (e) {
+      debugPrint('❌ Error export PDF: $e');
+      _showSnackBar(
+        message: 'Gagal mengekspor PDF: ${e.toString()}',
+        backgroundColor: AppTheme.statusError,
+        icon: Icons.error_outline_rounded,
+      );
+    } finally {
+      if (mounted) setState(() => _isExportingPdf = false);
+    }
+  }
+
+  Future<void> _exportExcel(List<TransactionModel> txs) async {
+    if (txs.isEmpty) {
+      _showSnackBar(
+        message: 'Tidak ada data transaksi pada periode ini untuk diekspor ke Excel.',
+        backgroundColor: AppTheme.statusWarning,
+        icon: Icons.warning_amber_rounded,
+      );
+      return;
+    }
+
+    setState(() => _isExportingExcel = true);
+    try {
+      await ReportExportService.shareExcelReport(
+        startDate: _startDate,
+        endDate: _endDate,
+        transactions: txs,
+        title: 'Laporan Keuangan LaundryKu (Excel) - $_selectedPeriodLabel',
+      );
+
+      _showSnackBar(
+        message: 'Laporan Excel (.xlsx) berhasil dibuat & siap dibagikan/diunduh!',
+        backgroundColor: AppTheme.statusSuccess,
+        icon: Icons.check_circle_rounded,
+      );
+    } catch (e) {
+      debugPrint('❌ Error export Excel: $e');
+      _showSnackBar(
+        message: 'Gagal mengekspor Excel: ${e.toString()}',
+        backgroundColor: AppTheme.statusError,
+        icon: Icons.error_outline_rounded,
+      );
+    } finally {
+      if (mounted) setState(() => _isExportingExcel = false);
+    }
+  }
+
+  Future<void> _exportWord(List<TransactionModel> txs) async {
+    if (txs.isEmpty) {
+      _showSnackBar(
+        message: 'Tidak ada data transaksi pada periode ini untuk diekspor ke Word.',
+        backgroundColor: AppTheme.statusWarning,
+        icon: Icons.warning_amber_rounded,
+      );
+      return;
+    }
+
+    setState(() => _isExportingWord = true);
+    try {
+      await ReportExportService.shareWordReport(
+        startDate: _startDate,
+        endDate: _endDate,
+        transactions: txs,
+        title: 'Laporan Keuangan LaundryKu (Word) - $_selectedPeriodLabel',
+      );
+
+      _showSnackBar(
+        message: 'Laporan Word (.docx) berhasil dibuat & siap dibagikan/diunduh!',
+        backgroundColor: AppTheme.statusSuccess,
+        icon: Icons.check_circle_rounded,
+      );
+    } catch (e) {
+      debugPrint('❌ Error export Word: $e');
+      _showSnackBar(
+        message: 'Gagal mengekspor Word: ${e.toString()}',
+        backgroundColor: AppTheme.statusError,
+        icon: Icons.error_outline_rounded,
+      );
+    } finally {
+      if (mounted) setState(() => _isExportingWord = false);
     }
   }
 
@@ -150,7 +306,7 @@ class _ReportScreenState extends State<ReportScreen> {
           t.tanggalMasuk.isBefore(_endDate.add(const Duration(seconds: 1)));
     }).toList();
 
-    // Kalkulasi Total Omzet
+    // Kalkulasi Total Omzet & Metrik
     final totalOmzet = filteredTx.fold<double>(
         0, (sum, item) => sum + item.totalHarga);
 
@@ -158,12 +314,8 @@ class _ReportScreenState extends State<ReportScreen> {
     final rataRataTransaksi =
         totalTransaksi > 0 ? totalOmzet / totalTransaksi : 0.0;
 
-    final belumDiambilCount = filteredTx.where((t) {
-      return t.status == TransactionStatus.siapDiambil ||
-          t.status == TransactionStatus.prosesCuci ||
-          t.status == TransactionStatus.prosesSetrika ||
-          t.status == TransactionStatus.diterima;
-    }).length;
+    final belumDiambilCount =
+        filteredTx.where((t) => t.isBelumDiambil).length;
 
     final kiloanCount = filteredTx
         .where((t) => t.tipeLayanan == ServiceType.kiloan)
@@ -171,6 +323,17 @@ class _ReportScreenState extends State<ReportScreen> {
     final satuanCount = filteredTx
         .where((t) => t.tipeLayanan == ServiceType.satuan)
         .length;
+
+    // Breakdown Metode Pembayaran (Tunai vs QRIS)
+    final tunaiTxs = filteredTx
+        .where((t) => t.metodePembayaran.toUpperCase() != 'QRIS')
+        .toList();
+    final qrisTxs = filteredTx
+        .where((t) => t.metodePembayaran.toUpperCase() == 'QRIS')
+        .toList();
+
+    final omzetTunai = tunaiTxs.fold<double>(0, (sum, t) => sum + t.totalHarga);
+    final omzetQris = qrisTxs.fold<double>(0, (sum, t) => sum + t.totalHarga);
 
     // Hitung data harian untuk Bar Chart
     final chartData = _generateChartData(filteredTx, _startDate, _endDate);
@@ -203,13 +366,34 @@ class _ReportScreenState extends State<ReportScreen> {
 
               // ── 2. Highlight Card Total Omzet ─────────────────────
               _buildOmzetHeroCard(context, totalOmzet, isDark),
+              const SizedBox(height: 16),
+
+              // ── 3. SECTION BARU: Breakdown Metode Pembayaran ──────
+              _buildSectionTitle('Breakdown Metode Pembayaran', isDark),
+              const SizedBox(height: 10),
+              _buildPaymentMethodBreakdown(
+                context: context,
+                isDark: isDark,
+                totalOmzet: totalOmzet,
+                totalTx: totalTransaksi,
+                omzetTunai: omzetTunai,
+                tunaiCount: tunaiTxs.length,
+                omzetQris: omzetQris,
+                qrisCount: qrisTxs.length,
+              ),
               const SizedBox(height: 20),
 
-              // ── 3. Bar Chart Tren Omzet ───────────────────────────
+              // ── 4. SECTION BARU: Tombol Export PDF, Excel, Word ────
+              _buildSectionTitle('Ekspor Laporan ($_selectedPeriodLabel)', isDark),
+              const SizedBox(height: 10),
+              _buildExportButtonsSection(context, isDark, filteredTx),
+              const SizedBox(height: 20),
+
+              // ── 5. Bar Chart Tren Omzet ───────────────────────────
               _buildBarChartSection(context, isDark, chartData),
               const SizedBox(height: 20),
 
-              // ── 4. Statistik Tambahan ─────────────────────────────
+              // ── 6. Statistik Tambahan ─────────────────────────────
               _buildSectionTitle('Metrik & Statistik Operasional', isDark),
               const SizedBox(height: 10),
               _buildStatisticsGrid(
@@ -223,7 +407,7 @@ class _ReportScreenState extends State<ReportScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ── 5. Transaksi pada Periode Ini ─────────────────────
+              // ── 7. Transaksi pada Periode Ini ─────────────────────
               _buildSectionTitle(
                 'Rincian Transaksi Periode Ini (${filteredTx.length})',
                 isDark,
@@ -420,6 +604,337 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── SECTION BARU: Breakdown Metode Pembayaran Card ────────────────────────
+
+  Widget _buildPaymentMethodBreakdown({
+    required BuildContext context,
+    required bool isDark,
+    required double totalOmzet,
+    required int totalTx,
+    required double omzetTunai,
+    required int tunaiCount,
+    required double omzetQris,
+    required int qrisCount,
+  }) {
+    final pctTunai = totalOmzet > 0 ? (omzetTunai / totalOmzet) : 0.0;
+    final pctQris = totalOmzet > 0 ? (omzetQris / totalOmzet) : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : AppTheme.lightSurface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+        border: Border.all(color: AppTheme.borderColor(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // ── 1. Kartu Tunai ──
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.statusSuccess.withAlpha(isDark ? 35 : 18),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                    border: Border.all(
+                      color: AppTheme.statusSuccess.withAlpha(isDark ? 70 : 40),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.payments_outlined,
+                                size: 16,
+                                color: AppTheme.statusSuccess,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Tunai',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.statusSuccess,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.statusSuccess.withAlpha(40),
+                              borderRadius:
+                                  BorderRadius.circular(AppTheme.radiusSmall),
+                            ),
+                            child: Text(
+                              '$tunaiCount Nota',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.statusSuccess,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        AppFormatters.rupiah(omzetTunai),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF065F46),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${(pctTunai * 100).toStringAsFixed(1)}% dari total omzet',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: isDark
+                              ? AppTheme.darkTextSecondary
+                              : AppTheme.lightTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+
+              // ── 2. Kartu QRIS ──
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withAlpha(isDark ? 35 : 18),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withAlpha(isDark ? 70 : 40),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.qr_code_2_rounded,
+                                size: 16,
+                                color: Color(0xFF6366F1),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'QRIS',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF6366F1),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6366F1).withAlpha(40),
+                              borderRadius:
+                                  BorderRadius.circular(AppTheme.radiusSmall),
+                            ),
+                            child: Text(
+                              '$qrisCount Nota',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF6366F1),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        AppFormatters.rupiah(omzetQris),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: isDark
+                              ? Colors.white
+                              : const Color(0xFF3730A3),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${(pctQris * 100).toStringAsFixed(1)}% dari total omzet',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: isDark
+                              ? AppTheme.darkTextSecondary
+                              : AppTheme.lightTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Visual Proportion Bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: 8,
+              child: Row(
+                children: [
+                  if (totalOmzet > 0 && pctTunai > 0)
+                    Expanded(
+                      flex: max(1, (pctTunai * 100).toInt()),
+                      child: Container(color: AppTheme.statusSuccess),
+                    ),
+                  if (totalOmzet > 0 && pctQris > 0)
+                    Expanded(
+                      flex: max(1, (pctQris * 100).toInt()),
+                      child: Container(color: const Color(0xFF6366F1)),
+                    ),
+                  if (totalOmzet <= 0)
+                    Expanded(
+                      child: Container(
+                        color: isDark
+                            ? const Color(0xFF334155)
+                            : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── SECTION BARU: Tombol Export PDF, Excel, Word ───────────────────────────
+
+  Widget _buildExportButtonsSection(
+    BuildContext context,
+    bool isDark,
+    List<TransactionModel> txs,
+  ) {
+    return Row(
+      children: [
+        // 1. Export PDF
+        Expanded(
+          child: _buildExportActionButton(
+            label: 'PDF',
+            icon: Icons.picture_as_pdf_rounded,
+            color: const Color(0xFFEF4444),
+            isLoading: _isExportingPdf,
+            isDark: isDark,
+            onTap: () => _exportPdf(txs),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // 2. Export Excel (.xlsx)
+        Expanded(
+          child: _buildExportActionButton(
+            label: 'Excel',
+            icon: Icons.table_view_rounded,
+            color: const Color(0xFF10B981),
+            isLoading: _isExportingExcel,
+            isDark: isDark,
+            onTap: () => _exportExcel(txs),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // 3. Export Word (.docx)
+        Expanded(
+          child: _buildExportActionButton(
+            label: 'Word',
+            icon: Icons.description_rounded,
+            color: const Color(0xFF2563EB),
+            isLoading: _isExportingWord,
+            isDark: isDark,
+            onTap: () => _exportWord(txs),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExportActionButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool isLoading,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: isLoading ? null : onTap,
+      borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withAlpha(isDark ? 35 : 18),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+          border: Border.all(
+            color: color.withAlpha(isDark ? 70 : 40),
+            width: 1.2,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLoading)
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: color,
+                ),
+              )
+            else
+              Icon(icon, size: 20, color: color),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -723,6 +1238,11 @@ class _ReportScreenState extends State<ReportScreen> {
     TransactionModel tx,
     bool isDark,
   ) {
+    final isQris = tx.metodePembayaran.toUpperCase() == 'QRIS';
+    final methodColor = isQris
+        ? (isDark ? const Color(0xFF818CF8) : const Color(0xFF4F46E5))
+        : (isDark ? const Color(0xFF34D399) : const Color(0xFF059669));
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -749,15 +1269,41 @@ class _ReportScreenState extends State<ReportScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  tx.customerNama,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? AppTheme.darkTextPrimary
-                        : AppTheme.lightTextPrimary,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      tx.customerNama,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? AppTheme.darkTextPrimary
+                            : AppTheme.lightTextPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: methodColor.withAlpha(isDark ? 35 : 20),
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.radiusSmall),
+                        border: Border.all(
+                          color: methodColor.withAlpha(isDark ? 70 : 40),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Text(
+                        tx.metodePembayaran,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: methodColor,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 Text(
                   '${tx.nomorNota} • ${AppFormatters.date(tx.tanggalMasuk)}',

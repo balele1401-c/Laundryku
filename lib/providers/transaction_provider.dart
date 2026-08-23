@@ -14,6 +14,8 @@ class TransactionProvider extends ChangeNotifier {
 
   List<TransactionModel> _transactions = [];
   TransactionStatus? _filterStatus;
+  bool _filterBelumBayarOnly = false;
+  bool _filterBelumDiambilOnly = false;
   String _searchQuery = '';
   bool _isLoading = false;
   String? _errorMessage;
@@ -35,9 +37,19 @@ class TransactionProvider extends ChangeNotifier {
   List<TransactionModel> get transactions {
     var list = _transactions;
 
-    // Filter status
+    // Filter status alur
     if (_filterStatus != null) {
       list = list.where((t) => t.status == _filterStatus).toList();
+    }
+
+    // Filter khusus: Belum Bayar
+    if (_filterBelumBayarOnly) {
+      list = list.where((t) => t.isBelumBayar).toList();
+    }
+
+    // Filter khusus: Belum Diambil
+    if (_filterBelumDiambilOnly) {
+      list = list.where((t) => t.isBelumDiambil).toList();
     }
 
     // Filter search query
@@ -57,6 +69,8 @@ class TransactionProvider extends ChangeNotifier {
   List<TransactionModel> get allTransactions => _transactions;
   int get totalTransactions => _transactions.length;
   TransactionStatus? get filterStatus => _filterStatus;
+  bool get filterBelumBayarOnly => _filterBelumBayarOnly;
+  bool get filterBelumDiambilOnly => _filterBelumDiambilOnly;
   String get searchQuery => _searchQuery;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -71,21 +85,29 @@ class TransactionProvider extends ChangeNotifier {
   int get activeTransactionsCount =>
       _transactions.where((t) => t.status != TransactionStatus.selesai).length;
 
-  /// Jumlah pesanan berstatus Siap Diambil
-  int get siapDiambilCount =>
-      _transactions.where((t) => t.status == TransactionStatus.siapDiambil).length;
+  /// Jumlah pesanan belum diambil (belum status selesai/sudah diambil)
+  int get belumDiambilCount =>
+      _transactions.where((t) => t.isBelumDiambil).length;
+
+  /// Jumlah pesanan yang belum dibayar
+  int get belumBayarCount =>
+      _transactions.where((t) => t.isBelumBayar).length;
+
+  /// Jumlah pesanan selesai/siap diambil tapi belum bayar (perlu perhatian khusus)
+  int get attentionRequiredCount =>
+      _transactions.where((t) => t.isAttentionRequired).length;
 
   /// Jumlah pesanan Diterima (antrean)
   int get antreanCount =>
       _transactions.where((t) => t.status == TransactionStatus.diterima).length;
 
-  /// Jumlah pesanan Proses Cuci
-  int get prosesCuciCount =>
-      _transactions.where((t) => t.status == TransactionStatus.prosesCuci).length;
+  /// Jumlah pesanan Selesai (siap diambil pelanggan)
+  int get selesaiCount =>
+      _transactions.where((t) => t.status == TransactionStatus.selesai).length;
 
-  /// Jumlah pesanan Proses Setrika
-  int get prosesSetrikaCount =>
-      _transactions.where((t) => t.status == TransactionStatus.prosesSetrika).length;
+  /// Jumlah pesanan Sudah Diambil
+  int get sudahDiambilCount =>
+      _transactions.where((t) => t.status == TransactionStatus.sudahDiambil).length;
 
   /// Jumlah transaksi masuk hari ini
   int get todayTransactionsCount {
@@ -140,6 +162,26 @@ class TransactionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setFilterBelumBayar(bool value) {
+    _filterBelumBayarOnly = value;
+    notifyListeners();
+  }
+
+  void toggleFilterBelumBayar() {
+    _filterBelumBayarOnly = !_filterBelumBayarOnly;
+    notifyListeners();
+  }
+
+  void setFilterBelumDiambil(bool value) {
+    _filterBelumDiambilOnly = value;
+    notifyListeners();
+  }
+
+  void toggleFilterBelumDiambil() {
+    _filterBelumDiambilOnly = !_filterBelumDiambilOnly;
+    notifyListeners();
+  }
+
   void setSearchQuery(String query) {
     _searchQuery = query;
     notifyListeners();
@@ -147,6 +189,8 @@ class TransactionProvider extends ChangeNotifier {
 
   void clearFilters() {
     _filterStatus = null;
+    _filterBelumBayarOnly = false;
+    _filterBelumDiambilOnly = false;
     _searchQuery = '';
     notifyListeners();
   }
@@ -179,6 +223,8 @@ class TransactionProvider extends ChangeNotifier {
     int? qty,
     required double hargaSatuan,
     required double totalHarga,
+    String metodePembayaran = 'Tunai',
+    PaymentStatus statusPembayaran = PaymentStatus.lunas,
     required int estimasiHari,
     required String createdBy,
   }) async {
@@ -202,6 +248,8 @@ class TransactionProvider extends ChangeNotifier {
         qty: qty,
         hargaSatuan: hargaSatuan,
         totalHarga: totalHarga,
+        metodePembayaran: metodePembayaran,
+        statusPembayaran: statusPembayaran,
         status: TransactionStatus.diterima,
         tanggalMasuk: now,
         estimasiSelesai: estimasi,
@@ -261,6 +309,62 @@ class TransactionProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Error updating status: $e');
       _errorMessage = 'Gagal memperbarui status: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Update status pembayaran transaksi (Lunas / Belum Bayar).
+  Future<bool> updatePaymentStatus(
+    String transactionId,
+    PaymentStatus newStatus,
+  ) async {
+    try {
+      await _firestore.collection('transactions').doc(transactionId).update({
+        'statusPembayaran': newStatus.firestoreValue,
+        'updatedAt': Timestamp.now(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error updating payment status: $e');
+      _errorMessage = 'Gagal memperbarui status pembayaran: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Update detail transaksi yang diedit (layanan, berat/qty, metode & status pembayaran, audit trail).
+  Future<bool> updateTransactionDetails({
+    required String transactionId,
+    required String jenisLayanan,
+    required ServiceType tipeLayanan,
+    double? berat,
+    int? qty,
+    required double hargaSatuan,
+    required double totalHarga,
+    required String metodePembayaran,
+    required PaymentStatus statusPembayaran,
+    required String editedBy,
+  }) async {
+    try {
+      final now = DateTime.now();
+      await _firestore.collection('transactions').doc(transactionId).update({
+        'jenisLayanan': jenisLayanan,
+        'tipeLayanan': tipeLayanan.name,
+        'berat': berat,
+        'qty': qty,
+        'hargaSatuan': hargaSatuan,
+        'totalHarga': totalHarga,
+        'metodePembayaran': metodePembayaran,
+        'statusPembayaran': statusPembayaran.firestoreValue,
+        'lastEditedAt': Timestamp.fromDate(now),
+        'editedBy': editedBy,
+        'updatedAt': Timestamp.fromDate(now),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error updating transaction details: $e');
+      _errorMessage = 'Gagal memperbarui transaksi: ${e.toString()}';
       notifyListeners();
       return false;
     }
